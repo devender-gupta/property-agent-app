@@ -1,0 +1,55 @@
+import os
+from typing import List, Optional
+from pydantic import BaseModel, Field
+from supabase import create_client, Client
+from utils.logger import log
+
+# Initialize Supabase Client Connection
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+class PropertySearchInput(BaseModel):
+    max_price: Optional[int] = Field(None, description="Maximum budget/monthly rent price.")
+    beds: Optional[int] = Field(None, description="Minimum number of bedrooms requested.")
+    style: Optional[str] = Field(None, description="Architectural or interior style requested.")
+    amenities: Optional[List[str]] = Field(None, description="List of specific amenities required.")
+
+class PropertyResponse(BaseModel):
+    id: str
+    name: str
+    beds: int
+    price: int
+    style: str
+    amenities: List[str]
+    description: str
+
+def search_properties_api(filters: PropertySearchInput) -> List[PropertyResponse]:
+    """Queries the live Supabase property catalog based on active filters."""
+    filter_dict = filters if isinstance(filters, dict) else filters.model_dump(exclude_none=True)
+    
+    log.info(f"[TOOL EXECUTION] Starting property search. Filters applied: {filter_dict}")
+    
+    query = supabase.table("properties").select("*")
+    
+    max_price = filter_dict.get("max_price")
+    beds = filter_dict.get("beds")
+    style = filter_dict.get("style")
+    amenities = filter_dict.get("amenities")
+    
+    if max_price:
+        query = query.lte("price", max_price)
+    if beds is not None:
+        query = query.gte("beds", beds)
+    if style:
+        query = query.ilike("style", style)
+        
+    # FIX: Capitalize each amenity to match our seeded DB format (e.g., 'gym' -> 'Gym')
+    if amenities:
+        normalized_amenities = [a.title() for a in amenities]
+        query = query.contains("amenities", normalized_amenities)
+        
+    response = query.execute()
+    
+    log.info(f"[SUPABASE DB] Query finished. Found {len(response.data)} matching rows.")
+    return [PropertyResponse(**item) for item in response.data]

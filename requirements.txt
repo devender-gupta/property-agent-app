@@ -1,0 +1,10 @@
+#requirements.txt
+
+# Microsoft Agent Framework Core
+agent-framework>=1.0.0
+agent-framework-openai>=1.0.0
+
+# Database & Infrastructure
+supabase>=2.4.0
+pydantic[email]>=2.0.0
+python-dotenv>=1.0.0

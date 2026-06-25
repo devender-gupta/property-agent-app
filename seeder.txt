@@ -1,0 +1,145 @@
+-- 1. Create Properties Catalog Table
+CREATE TABLE public.properties (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    beds INT NOT NULL,
+    price INT NOT NULL,
+    style TEXT NOT NULL,
+    amenities TEXT[] DEFAULT '{}'::TEXT[],
+    description TEXT
+);
+
+-- 2. Create Tour Bookings Table
+CREATE TABLE public.tour_bookings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    property_id TEXT REFERENCES public.properties(id),
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone_number TEXT NOT NULL,
+    preferred_date TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 1. Create an ENUM type for booking statuses
+CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'cancelled', 'rescheduled');
+
+-- 2. Add the status column to tour_bookings with a default value
+ALTER TABLE public.tour_bookings 
+ADD COLUMN status booking_status DEFAULT 'confirmed'::booking_status;
+
+-- 3. Add an updated_at timestamp hook for structural tracking
+ALTER TABLE public.tour_bookings 
+ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL;
+
+-- 3. Seed sample data into properties
+INSERT INTO public.properties (id, name, beds, price, style, amenities, description)
+VALUES
+('P-1001', 'Property Garden Studio 1001', 0, 1750, 'Modern', ARRAY['Gym','24/7 Concierge','Coworking Space','Pet Friendly'], 'Modern studio apartment with premium amenities and city access.'),
+('P-1002', 'Urban Loft 1002', 1, 2100, 'Industrial', ARRAY['Gym','Pool','Rooftop Deck'], 'Industrial-style loft with rooftop access and fitness center.'),
+('P-1003', 'Lakeview Retreat 1003', 2, 2950, 'Contemporary', ARRAY['Pool','Parking','Pet Friendly'], 'Bright apartment featuring lake views and contemporary finishes.'),
+('P-1004', 'Sunset Residences 1004', 3, 3850, 'Modern', ARRAY['Gym','Pool','Parking','Security'], 'Spacious family residence with luxury amenities.'),
+('P-1005', 'Downtown Studio 1005', 0, 1650, 'Minimalist', ARRAY['Gym','Coworking Space'], 'Compact minimalist studio in downtown district.'),
+('P-1006', 'Harbor Heights 1006', 2, 3100, 'Coastal', ARRAY['Pool','Rooftop Deck','Parking'], 'Coastal-inspired apartment overlooking the harbor.'),
+('P-1007', 'Skyline Towers 1007', 1, 2450, 'Modern', ARRAY['Gym','Pool','24/7 Concierge'], 'Modern tower unit with skyline views.'),
+('P-1008', 'Greenwood Flats 1008', 2, 2800, 'Rustic', ARRAY['Parking','Pet Friendly'], 'Nature-inspired apartment near green spaces.'),
+('P-1009', 'Metro Living 1009', 1, 2200, 'Industrial', ARRAY['Gym','Coworking Space','Security'], 'Urban apartment tailored for professionals.'),
+('P-1010', 'The Residences 1010', 3, 4200, 'Luxury', ARRAY['Gym','Pool','Spa','24/7 Concierge'], 'Luxury residence with premium services and amenities.'),
+
+('P-1011', 'Property 1011', 0, 1800, 'Modern', ARRAY['Gym','Parking'], 'Comfortable studio apartment with modern interiors.'),
+('P-1012', 'Property 1012', 1, 2250, 'Contemporary', ARRAY['Gym','Pool'], 'Contemporary apartment with natural lighting.'),
+('P-1013', 'Property 1013', 2, 3000, 'Industrial', ARRAY['Gym','Coworking Space'], 'Industrial-style apartment for urban living.'),
+('P-1014', 'Property 1014', 3, 3900, 'Luxury', ARRAY['Pool','Spa','Parking'], 'Luxury apartment with premium facilities.'),
+('P-1015', 'Property 1015', 1, 2350, 'Minimalist', ARRAY['Gym','Security'], 'Minimalist apartment with efficient design.'),
+('P-1016', 'Property 1016', 2, 2850, 'Modern', ARRAY['Gym','Pool','Parking'], 'Modern apartment with excellent amenities.'),
+('P-1017', 'Property 1017', 0, 1700, 'Contemporary', ARRAY['Coworking Space','Pet Friendly'], 'Stylish studio apartment near business district.'),
+('P-1018', 'Property 1018', 1, 2150, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Loft apartment with open layouts and rooftop access.'),
+('P-1019', 'Property 1019', 2, 3050, 'Luxury', ARRAY['Pool','24/7 Concierge'], 'Elegant apartment with concierge services.'),
+('P-1020', 'Property 1020', 3, 4100, 'Modern', ARRAY['Gym','Pool','Spa'], 'Spacious luxury residence with modern design.'),
+
+('P-1021', 'Property 1021', 0, 1750, 'Minimalist', ARRAY['Gym'], 'Affordable studio with practical amenities.'),
+('P-1022', 'Property 1022', 1, 2300, 'Modern', ARRAY['Gym','Parking'], 'Modern one-bedroom apartment.'),
+('P-1023', 'Property 1023', 2, 2900, 'Contemporary', ARRAY['Pool','Pet Friendly'], 'Comfortable apartment suitable for families.'),
+('P-1024', 'Property 1024', 3, 4000, 'Luxury', ARRAY['Gym','Pool','Spa'], 'Premium residence with luxury finishes.'),
+('P-1025', 'Property 1025', 1, 2250, 'Industrial', ARRAY['Coworking Space','Gym'], 'Urban loft designed for professionals.'),
+('P-1026', 'Property 1026', 2, 3150, 'Modern', ARRAY['Gym','Parking','Security'], 'Modern apartment with secure parking.'),
+('P-1027', 'Property 1027', 0, 1850, 'Contemporary', ARRAY['Pet Friendly'], 'Cozy studio apartment.'),
+('P-1028', 'Property 1028', 1, 2400, 'Minimalist', ARRAY['Gym','Coworking Space'], 'Minimalist apartment with shared workspace.'),
+('P-1029', 'Property 1029', 2, 3200, 'Luxury', ARRAY['Pool','24/7 Concierge'], 'Luxury apartment with resort-style amenities.'),
+('P-1030', 'Property 1030', 3, 4300, 'Modern', ARRAY['Gym','Pool','Spa','Parking'], 'Large family residence with premium services.'),
+
+('P-1031', 'Property 1031', 0, 1780, 'Modern', ARRAY['Gym'], 'Bright studio with modern layout.'),
+('P-1032', 'Property 1032', 1, 2200, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Industrial-inspired loft apartment.'),
+('P-1033', 'Property 1033', 2, 2950, 'Contemporary', ARRAY['Pool','Parking'], 'Contemporary apartment with excellent views.'),
+('P-1034', 'Property 1034', 3, 4050, 'Luxury', ARRAY['Pool','Spa','Security'], 'Luxury residence with enhanced privacy.'),
+('P-1035', 'Property 1035', 1, 2350, 'Minimalist', ARRAY['Gym','Pet Friendly'], 'Minimalist apartment in a vibrant neighborhood.'),
+('P-1036', 'Property 1036', 2, 3100, 'Modern', ARRAY['Gym','Pool'], 'Modern apartment with pool access.'),
+('P-1037', 'Property 1037', 0, 1725, 'Contemporary', ARRAY['Coworking Space'], 'Studio apartment ideal for remote workers.'),
+('P-1038', 'Property 1038', 1, 2450, 'Industrial', ARRAY['Gym','Parking'], 'Industrial-style apartment with secure parking.'),
+('P-1039', 'Property 1039', 2, 3250, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Premium apartment with concierge support.'),
+('P-1040', 'Property 1040', 3, 4400, 'Modern', ARRAY['Gym','Spa','Pool'], 'Luxury family residence.'),
+
+('P-1041', 'Property 1041', 0, 1800, 'Modern', ARRAY['Gym'], 'Modern studio apartment.'),
+('P-1042', 'Property 1042', 1, 2300, 'Contemporary', ARRAY['Parking'], 'Comfortable one-bedroom residence.'),
+('P-1043', 'Property 1043', 2, 3050, 'Industrial', ARRAY['Gym','Coworking Space'], 'Loft apartment with open-plan design.'),
+('P-1044', 'Property 1044', 3, 4150, 'Luxury', ARRAY['Pool','Spa'], 'Luxury apartment with spa facilities.'),
+('P-1045', 'Property 1045', 1, 2400, 'Minimalist', ARRAY['Gym','Security'], 'Minimalist design with smart layouts.'),
+('P-1046', 'Property 1046', 2, 3150, 'Modern', ARRAY['Pool','Parking'], 'Modern residence with community pool.'),
+('P-1047', 'Property 1047', 0, 1750, 'Contemporary', ARRAY['Pet Friendly'], 'Studio apartment for pet owners.'),
+('P-1048', 'Property 1048', 1, 2350, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Urban loft with rooftop amenities.'),
+('P-1049', 'Property 1049', 2, 3200, 'Luxury', ARRAY['Pool','24/7 Concierge'], 'Luxury apartment with premium services.'),
+('P-1050', 'Property 1050', 3, 4250, 'Modern', ARRAY['Gym','Pool','Spa'], 'Spacious residence with luxury amenities.'),
+
+('P-1051', 'Property 1051', 0, 1850, 'Modern', ARRAY['Gym'], 'Studio apartment with city access.'),
+('P-1052', 'Property 1052', 1, 2250, 'Contemporary', ARRAY['Parking'], 'Contemporary apartment with efficient layout.'),
+('P-1053', 'Property 1053', 2, 2950, 'Industrial', ARRAY['Gym','Coworking Space'], 'Open loft apartment.'),
+('P-1054', 'Property 1054', 3, 4100, 'Luxury', ARRAY['Pool','Spa'], 'Luxury family residence.'),
+('P-1055', 'Property 1055', 1, 2400, 'Minimalist', ARRAY['Gym','Pet Friendly'], 'Minimalist apartment with pet-friendly policies.'),
+('P-1056', 'Property 1056', 2, 3100, 'Modern', ARRAY['Pool','Parking'], 'Modern apartment with pool access.'),
+('P-1057', 'Property 1057', 0, 1700, 'Contemporary', ARRAY['Coworking Space'], 'Studio for professionals and students.'),
+('P-1058', 'Property 1058', 1, 2450, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Industrial loft with rooftop amenities.'),
+('P-1059', 'Property 1059', 2, 3250, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Luxury apartment with concierge service.'),
+('P-1060', 'Property 1060', 3, 4400, 'Modern', ARRAY['Gym','Spa'], 'Premium family residence.'),
+
+('P-1061', 'Property 1061', 0, 1750, 'Modern', ARRAY['Gym'], 'Modern studio apartment.'),
+('P-1062', 'Property 1062', 1, 2300, 'Contemporary', ARRAY['Parking'], 'Comfortable urban residence.'),
+('P-1063', 'Property 1063', 2, 3000, 'Industrial', ARRAY['Gym','Coworking Space'], 'Industrial apartment with shared workspace.'),
+('P-1064', 'Property 1064', 3, 4200, 'Luxury', ARRAY['Pool','Spa'], 'Luxury residence with premium amenities.'),
+('P-1065', 'Property 1065', 1, 2350, 'Minimalist', ARRAY['Gym','Security'], 'Minimalist one-bedroom apartment.'),
+('P-1066', 'Property 1066', 2, 3150, 'Modern', ARRAY['Pool','Parking'], 'Modern apartment with secure parking.'),
+('P-1067', 'Property 1067', 0, 1800, 'Contemporary', ARRAY['Pet Friendly'], 'Studio apartment in a vibrant community.'),
+('P-1068', 'Property 1068', 1, 2450, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Loft apartment with rooftop access.'),
+('P-1069', 'Property 1069', 2, 3200, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Luxury apartment with city views.'),
+('P-1070', 'Property 1070', 3, 4300, 'Modern', ARRAY['Gym','Spa'], 'Spacious residence with modern design.'),
+
+('P-1071', 'Property 1071', 0, 1750, 'Modern', ARRAY['Gym'], 'Modern studio.'),
+('P-1072', 'Property 1072', 1, 2250, 'Contemporary', ARRAY['Parking'], 'Well-designed one-bedroom apartment.'),
+('P-1073', 'Property 1073', 2, 2950, 'Industrial', ARRAY['Gym','Coworking Space'], 'Industrial apartment for urban living.'),
+('P-1074', 'Property 1074', 3, 4050, 'Luxury', ARRAY['Pool','Spa'], 'Luxury apartment with premium features.'),
+('P-1075', 'Property 1075', 1, 2400, 'Minimalist', ARRAY['Gym','Pet Friendly'], 'Minimalist apartment with open floor plan.'),
+('P-1076', 'Property 1076', 2, 3100, 'Modern', ARRAY['Pool','Parking'], 'Modern residence with excellent facilities.'),
+('P-1077', 'Property 1077', 0, 1725, 'Contemporary', ARRAY['Coworking Space'], 'Studio ideal for remote workers.'),
+('P-1078', 'Property 1078', 1, 2450, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Urban loft with rooftop access.'),
+('P-1079', 'Property 1079', 2, 3250, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Luxury apartment with concierge service.'),
+('P-1080', 'Property 1080', 3, 4400, 'Modern', ARRAY['Gym','Spa'], 'Large luxury residence.'),
+
+('P-1081', 'Property 1081', 0, 1800, 'Modern', ARRAY['Gym'], 'Modern studio apartment.'),
+('P-1082', 'Property 1082', 1, 2300, 'Contemporary', ARRAY['Parking'], 'Comfortable urban apartment.'),
+('P-1083', 'Property 1083', 2, 3000, 'Industrial', ARRAY['Gym','Coworking Space'], 'Industrial-style apartment.'),
+('P-1084', 'Property 1084', 3, 4150, 'Luxury', ARRAY['Pool','Spa'], 'Luxury residence with spa access.'),
+('P-1085', 'Property 1085', 1, 2350, 'Minimalist', ARRAY['Gym','Security'], 'Minimalist apartment with modern interiors.'),
+('P-1086', 'Property 1086', 2, 3150, 'Modern', ARRAY['Pool','Parking'], 'Modern apartment with secure parking.'),
+('P-1087', 'Property 1087', 0, 1750, 'Contemporary', ARRAY['Pet Friendly'], 'Pet-friendly studio apartment.'),
+('P-1088', 'Property 1088', 1, 2450, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Industrial loft with city views.'),
+('P-1089', 'Property 1089', 2, 3200, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Luxury apartment with premium services.'),
+('P-1090', 'Property 1090', 3, 4300, 'Modern', ARRAY['Gym','Spa'], 'Spacious modern residence.'),
+
+('P-1091', 'Property 1091', 0, 1750, 'Modern', ARRAY['Gym'], 'Modern studio apartment.'),
+('P-1092', 'Property 1092', 1, 2250, 'Contemporary', ARRAY['Parking'], 'Comfortable one-bedroom apartment.'),
+('P-1093', 'Property 1093', 2, 2950, 'Industrial', ARRAY['Gym','Coworking Space'], 'Industrial apartment with shared workspace.'),
+('P-1094', 'Property 1094', 3, 4100, 'Luxury', ARRAY['Pool','Spa'], 'Luxury apartment with premium facilities.'),
+('P-1095', 'Property 1095', 1, 2400, 'Minimalist', ARRAY['Gym','Pet Friendly'], 'Minimalist apartment with natural lighting.'),
+('P-1096', 'Property 1096', 2, 3100, 'Modern', ARRAY['Pool','Parking'], 'Modern residence with pool access.'),
+('P-1097', 'Property 1097', 0, 1700, 'Contemporary', ARRAY['Coworking Space'], 'Studio apartment for professionals.'),
+('P-1098', 'Property 1098', 1, 2450, 'Industrial', ARRAY['Gym','Rooftop Deck'], 'Industrial loft apartment.'),
+('P-1099', 'Property 1099', 2, 3250, 'Luxury', ARRAY['24/7 Concierge','Pool'], 'Luxury apartment with concierge support.'),
+('P-1100', 'Property 1100', 3, 4500, 'Modern', ARRAY['Gym','Pool','Spa','24/7 Concierge'], 'Flagship luxury residence with premium amenities.');

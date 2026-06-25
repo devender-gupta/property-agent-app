@@ -1,0 +1,5 @@
+# Include everything from the core production list first
+-r requirements.txt
+
+# Target the latest beta version string explicitly
+agent-framework-devui==1.0.0b260528
