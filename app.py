@@ -3,19 +3,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 from agent_framework.orchestrations import HandoffBuilder
 from agent_framework.devui import serve
 
-# Import database-connected tools
-from tools.property_tools import search_properties_api
-from tools.scheduling_tools import (
-    confirm_tour_booking, 
-    list_customer_bookings_api,
-    cancel_tour_booking_api,
-    reschedule_tour_booking_api
-)
+from utils.agent_config import build_agent_from_config
 from utils.logger import log
 
 # --- 1. INITIALIZE CLIENT ---
@@ -24,66 +16,10 @@ chat_client = OpenAIChatClient(
     model=os.environ.get("AGENT_MODEL", "gpt-4o-mini")
 )
 
-# --- 2. DEFINE THE SPECIALIZED AGENTS ---
-
-# Property Discovery Agent
-property_agent = Agent(
-    name="PropertyFinderAgent",
-    client=chat_client,
-    tools=[search_properties_api],
-    require_per_service_call_history_persistence=True,
-    instructions="""
-    You are an elite Real Estate AI Concierge. Help users find their dream property.
-    
-    Guidelines:
-    1. Use search_properties_api to filter options based on budget, beds, style, or amenities.
-    2. If the user indicates they want to book a tour, schedule a visit, or view a specific property, gracefully hand control over to TourSchedulerAgent.
-    3. If the user asks to see their existing bookings, cancel a booking, or modify an appointment, hand control over to CustomerPortalAgent.
-    """
-)
-
-# Transactional Tour Booking Agent
-scheduler_agent = Agent(
-    name="TourSchedulerAgent",
-    client=chat_client,
-    tools=[confirm_tour_booking],
-    require_per_service_call_history_persistence=True,
-    instructions="""
-    You are a Scheduling Coordinator. Your unique goal is to capture form details for a NEW property viewing tour.
-    
-    CRITICAL PROTOCOL FOR PROPERTY_ID:
-    - Look back at the conversation history to find the name or ID of the property the user said they liked (e.g., Property 1022, Skyline Towers, etc.). 
-    - You MUST use that specific identifier as the 'property_id' when calling `confirm_tour_booking`.
-    
-    You MUST collect exactly these 4 pieces of information from the user:
-    1. Full Name
-    2. Email Address
-    3. Phone Number
-    4. Preferred Date and Time for the tour
-    
-    Guidelines:
-    - Ask for missing items one by one.
-    - Once you have the property identity AND these 4 missing pieces, immediately execute the `confirm_tour_booking` tool.
-    - After a SUCCESS confirmation, let the user know their tour is secured and hand control back to PropertyFinderAgent.
-    """
-)
-
-# Customer Portal Management Agent
-portal_agent = Agent(
-    name="CustomerPortalAgent",
-    client=chat_client,
-    tools=[list_customer_bookings_api, cancel_tour_booking_api, reschedule_tour_booking_api],
-    require_per_service_call_history_persistence=True,
-    instructions="""
-    You are the Customer Portal Representative. Your primary goal is to help users review, cancel, or reschedule existing appointments.
-    
-    Capabilities & Protocols:
-    1. LIST BOOKINGS: Ask for their email address if you don't have it, then run `list_customer_bookings_api`.
-    2. CANCEL TOUR: Pass the specific Booking UUID to `cancel_tour_booking_api`.
-    3. RESCHEDULE TOUR: Pass the Booking UUID and new time to `reschedule_tour_booking_api`.
-    - Once actions are finished, tell the user and hand control back to PropertyFinderAgent.
-    """
-)
+# --- 2. DEFINE THE SPECIALIZED AGENTS FROM YAML CONFIG ---
+property_agent = build_agent_from_config("property_finder.yaml", chat_client)
+scheduler_agent = build_agent_from_config("tour_scheduler.yaml", chat_client)
+portal_agent = build_agent_from_config("customer_portal.yaml", chat_client)
 
 # --- 3. CONCRETE STATE STORAGE BRIDGE ENGINE ---
 class ConcreteFileCheckpointStore:
@@ -117,7 +53,7 @@ log.info("[GRAPH BUILD] Compiling Handoff Builder Matrix...")
 builder = HandoffBuilder(
     name="Property_Management_Workflow",
     participants=[property_agent, scheduler_agent, portal_agent],
-    checkpoint_storage=local_persistence_provider  # <--- FIXED: Prevents serialization faults across boundaries
+    checkpoint_storage=local_persistence_provider  
 )
 builder.with_start_agent(property_agent)
 
