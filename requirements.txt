@@ -4,8 +4,13 @@
 agent-framework>=1.0.0
 agent-framework-openai>=1.0.0
 
+# API Server
+fastapi>=0.112.0
+uvicorn>=0.30.0
+
 # Database & Infrastructure
 supabase>=2.4.0
 pydantic[email]>=2.0.0
 python-dotenv>=1.0.0
+python-dateutil>=2.9.0
 PyYAML>=6.0.0
