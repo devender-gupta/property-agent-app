@@ -115,6 +115,7 @@ local_persistence_provider = ConcreteFileCheckpointStore()
 # --- 4. BUILD THE ORCHESTRATION GRAPH ---
 log.info("[GRAPH BUILD] Compiling Handoff Builder Matrix...")
 builder = HandoffBuilder(
+    name="Property_Management_Workflow",
     participants=[property_agent, scheduler_agent, portal_agent],
     checkpoint_storage=local_persistence_provider  # <--- FIXED: Prevents serialization faults across boundaries
 )
@@ -143,7 +144,6 @@ builder.add_handoff(
 )
 
 workflow = builder.build()
-workflow_agent = workflow.as_agent(name="Master_Property_Workflow")
 
 # --- 5. EXPOSE TO THE FRAMEWORK SERVER ---
 if __name__ == "__main__":
@@ -153,7 +153,7 @@ if __name__ == "__main__":
             property_agent, 
             scheduler_agent, 
             portal_agent, 
-            workflow_agent
+            workflow
         ], 
         port=app_port
     )
