@@ -34,7 +34,6 @@ class ConcreteFileCheckpointStore:
         return self._cache.get(str(key), {})
 
     def write_state(self, key, state, *args, **kwargs):
-        # Cleanly store the tracking references without triggering raw JSON serialization faults
         self._cache[str(key)] = state
 
     def get_topic(self, *args, **kwargs): return None
@@ -81,6 +80,12 @@ builder.add_handoff(
 
 workflow = builder.build()
 
+# FIXED: Provided a descriptive identity name to the standard wrapper interface
+workflow_agent = workflow.as_agent(
+    name="Master_Property_Workflow",
+    description="A master workflow agent that orchestrates the property finder, tour scheduler, and customer portal agents."
+)
+
 # --- 5. EXPOSE TO THE FRAMEWORK SERVER ---
 if __name__ == "__main__":
     app_port = int(os.environ.get("APP_PORT", "8000"))
@@ -88,7 +93,8 @@ if __name__ == "__main__":
         entities=[
             property_agent, 
             scheduler_agent, 
-            portal_agent, 
+            portal_agent,
+            workflow_agent,
             workflow
         ], 
         port=app_port
