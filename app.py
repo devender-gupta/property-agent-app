@@ -1,5 +1,4 @@
 import os
-import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,9 +6,9 @@ load_dotenv()
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 from agent_framework.orchestrations import HandoffBuilder
-from agent_framework._types import Message
+from agent_framework.devui import serve
 
-# Import our updated tool list
+# Import database-connected tools
 from tools.property_tools import search_properties_api
 from tools.scheduling_tools import (
     confirm_tour_booking, 
@@ -19,13 +18,15 @@ from tools.scheduling_tools import (
 )
 from utils.logger import log
 
-# --- INITIALIZE THE SHARED COMPONENTS ---
+# --- 1. INITIALIZE CLIENT ---
 chat_client = OpenAIChatClient(
     api_key=os.environ.get("OPENAI_API_KEY"),
     model=os.environ.get("AGENT_MODEL", "gpt-4o-mini")
 )
 
-# --- AGENT 1: PROPERTY DISCOVERY ---
+# --- 2. DEFINE THE SPECIALIZED AGENTS ---
+
+# Property Discovery Agent
 property_agent = Agent(
     name="PropertyFinderAgent",
     client=chat_client,
@@ -41,7 +42,7 @@ property_agent = Agent(
     """
 )
 
-# --- AGENT 2: TRANSACTIONAL RESERVATIONS ---
+# Transactional Tour Booking Agent
 scheduler_agent = Agent(
     name="TourSchedulerAgent",
     client=chat_client,
@@ -50,7 +51,11 @@ scheduler_agent = Agent(
     instructions="""
     You are a Scheduling Coordinator. Your unique goal is to capture form details for a NEW property viewing tour.
     
-    You MUST collect exactly these 4 pieces of information:
+    CRITICAL PROTOCOL FOR PROPERTY_ID:
+    - Look back at the conversation history to find the name or ID of the property the user said they liked (e.g., Property 1022, Skyline Towers, etc.). 
+    - You MUST use that specific identifier as the 'property_id' when calling `confirm_tour_booking`.
+    
+    You MUST collect exactly these 4 pieces of information from the user:
     1. Full Name
     2. Email Address
     3. Phone Number
@@ -58,12 +63,12 @@ scheduler_agent = Agent(
     
     Guidelines:
     - Ask for missing items one by one.
-    - Once all 4 details are present, execute the `confirm_tour_booking` tool.
-    - After a SUCCESS confirmation, let the user know their tour is secured and that they can talk to the PropertyFinderAgent if they want to search for more homes.
+    - Once you have the property identity AND these 4 missing pieces, immediately execute the `confirm_tour_booking` tool.
+    - After a SUCCESS confirmation, let the user know their tour is secured and hand control back to PropertyFinderAgent.
     """
 )
 
-# --- AGENT 3: THE CUSTOMER PORTAL ---
+# Customer Portal Management Agent
 portal_agent = Agent(
     name="CustomerPortalAgent",
     client=chat_client,
@@ -76,15 +81,46 @@ portal_agent = Agent(
     1. LIST BOOKINGS: Ask for their email address if you don't have it, then run `list_customer_bookings_api`.
     2. CANCEL TOUR: Pass the specific Booking UUID to `cancel_tour_booking_api`.
     3. RESCHEDULE TOUR: Pass the Booking UUID and new time to `reschedule_tour_booking_api`.
+    - Once actions are finished, tell the user and hand control back to PropertyFinderAgent.
     """
 )
 
-# --- BUILD THE EXPERT ORCHESTRATION GRAPH AT THE MODULE ROOT ---
-log.info("[GRAPH BUILD] Compiling Handoff Builder Matrix...")
-builder = HandoffBuilder(participants=[property_agent, scheduler_agent, portal_agent])
-builder.with_start_agent(property_agent)  # Setting the initial starting node explicitly
+# --- 3. CONCRETE STATE STORAGE BRIDGE ENGINE ---
+class ConcreteFileCheckpointStore:
+    """
+    A concrete state storage provider that intercepts workflow metadata 
+    and writes snapshots to local variables, bypassing serialization traps.
+    """
+    def __init__(self):
+        self._cache = {}
 
-# Fix parameter name back to 'description'
+    def read_state(self, key, *args, **kwargs):
+        return self._cache.get(str(key), {})
+
+    def write_state(self, key, state, *args, **kwargs):
+        # Cleanly store the tracking references without triggering raw JSON serialization faults
+        self._cache[str(key)] = state
+
+    def get_topic(self, *args, **kwargs): return None
+    def write_topic(self, *args, **kwargs): pass
+    def delete_topic(self, *args, **kwargs): pass
+    def list_topics(self, *args, **kwargs): return []
+    def get_index_text(self, *args, **kwargs): return ""
+    def rebuild_index(self, *args, **kwargs): pass
+    def search_transcripts(self, *args, **kwargs): return []
+    def get_transcripts_directory(self, *args, **kwargs): return ""
+
+local_persistence_provider = ConcreteFileCheckpointStore()
+
+# --- 4. BUILD THE ORCHESTRATION GRAPH ---
+log.info("[GRAPH BUILD] Compiling Handoff Builder Matrix...")
+builder = HandoffBuilder(
+    participants=[property_agent, scheduler_agent, portal_agent],
+    checkpoint_storage=local_persistence_provider  # <--- FIXED: Prevents serialization faults across boundaries
+)
+builder.with_start_agent(property_agent)
+
+# Configure agent transition pathways
 builder.add_handoff(
     source=property_agent, 
     targets=[scheduler_agent], 
@@ -98,7 +134,7 @@ builder.add_handoff(
 builder.add_handoff(
     source=scheduler_agent, 
     targets=[property_agent], 
-    description="Hand off back to the finder agent when the user wants to look for more properties."
+    description="Hand off back to the finder agent when the user wants to look for more properties or start a new search."
 )
 builder.add_handoff(
     source=portal_agent, 
@@ -106,36 +142,18 @@ builder.add_handoff(
     description="Hand off back to the finder agent when they are done managing their existing appointments."
 )
 
-# This exposes the static entry point cleanly to the dynamic loading module parser
 workflow = builder.build()
+workflow_agent = workflow.as_agent(name="Master_Property_Workflow")
 
-# --- STANDALONE TERMINAL EXECUTION LOOP ---
-async def start_terminal_chat():
-    print("\n🤖 Multi-Agent Property Assistant Online. How can I help you find a home today?")
-    conversation_stream = []
-    
-    while True:
-        try:
-            user_input = input("\nYou: ")
-            if user_input.lower() in ["exit", "quit"]:
-                break
-                
-            conversation_stream.append(Message(role="user", content=user_input))
-            result_events = await workflow.run(conversation_stream)
-            
-            response_text = "I am processing your request..."
-            if isinstance(result_events, list):
-                for event in reversed(result_events):
-                    if hasattr(event, "type") and event.type == "request_info":
-                        if hasattr(event, "data") and hasattr(event.data, "agent_response"):
-                            response_text = str(event.data.agent_response)
-                            break
-                            
-            print(f"\nAssistant: {response_text}")
-            
-        except Exception as e:
-            print(f"\nAssistant: Sorry, I encountered an operational block. (Error: {str(e)})")
-
-# Execute the local loop ONLY when running this file directly
+# --- 5. EXPOSE TO THE FRAMEWORK SERVER ---
 if __name__ == "__main__":
-    asyncio.run(start_terminal_chat())
+    app_port = int(os.environ.get("APP_PORT", "8000"))
+    serve(
+        entities=[
+            property_agent, 
+            scheduler_agent, 
+            portal_agent, 
+            workflow_agent
+        ], 
+        port=app_port
+    )
