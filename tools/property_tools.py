@@ -4,9 +4,12 @@ from pydantic import BaseModel, Field
 from supabase import create_client, Client
 from utils.logger import log
 
-# Initialize Supabase Client Connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY or SUPABASE_SERVICE_ROLE_KEY must be set.")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class PropertySearchInput(BaseModel):
@@ -27,8 +30,7 @@ class PropertyResponse(BaseModel):
 def search_properties_api(filters: PropertySearchInput) -> List[PropertyResponse]:
     """Queries the live Supabase property catalog based on active filters."""
     filter_dict = filters if isinstance(filters, dict) else filters.model_dump(exclude_none=True)
-    
-    log.info(f"[TOOL EXECUTION] Starting property search. Filters applied: {filter_dict}")
+    log.info("Property search started filters=%s", filter_dict)
     
     query = supabase.table("properties").select("*")
     
@@ -43,13 +45,12 @@ def search_properties_api(filters: PropertySearchInput) -> List[PropertyResponse
         query = query.gte("beds", beds)
     if style:
         query = query.ilike("style", style)
-        
-    # FIX: Capitalize each amenity to match our seeded DB format (e.g., 'gym' -> 'Gym')
+
+    # Seed data stores title-cased amenities; normalize incoming values to match.
     if amenities:
         normalized_amenities = [a.title() for a in amenities]
         query = query.contains("amenities", normalized_amenities)
-        
+
     response = query.execute()
-    
-    log.info(f"[SUPABASE DB] Query finished. Found {len(response.data)} matching rows.")
+    log.info("Property search completed matches=%d", len(response.data))
     return [PropertyResponse(**item) for item in response.data]

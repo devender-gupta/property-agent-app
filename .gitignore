@@ -5,6 +5,12 @@ venv/
 
 # Data files
 *.log
+session_state.db
+
+# Workflow checkpoints and lightweight session metadata -- runtime state,
+# not source. See app.py (FileCheckpointStorage) and server.py (SESSION_STATE_FILE).
+checkpoints/
+session_state.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

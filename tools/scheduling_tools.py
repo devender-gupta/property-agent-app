@@ -1,14 +1,18 @@
 import os
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field, EmailStr
+from dateutil import parser as dparser
 from supabase import create_client, Client
 from utils.logger import log
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY or SUPABASE_SERVICE_ROLE_KEY must be set.")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- NEW UTILITY: NATURAL DATE NORMALIZATION LAYER ---
 def parse_and_normalize_date(date_str: str) -> tuple[bool, str]:
     """
     Parses conversational or loose date/time strings into a structured ISO timestamp 
@@ -21,21 +25,17 @@ def parse_and_normalize_date(date_str: str) -> tuple[bool, str]:
     clean_str = str(date_str).strip().lower()
     now = datetime.now()
     
-    # 1. Pre-process common loose relative tokens
+    # Pre-process common relative tokens before parser fallback.
     if "tomorrow" in clean_str:
         target_date = now + timedelta(days=1)
         clean_str = clean_str.replace("tomorrow", target_date.strftime("%Y-%m-%d"))
     elif "today" in clean_str:
         clean_str = clean_str.replace("today", now.strftime("%Y-%m-%d"))
 
-    # 2. Try advanced fuzzy parsing using standard package tools
     try:
-        import dateutil.parser as dparser
-        # fuzzy=True extracts dates out of unstructured sentences (e.g. "schedule for Friday at 4pm")
         parsed_dt = dparser.parse(clean_str, fuzzy=True, default=now)
         return True, parsed_dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
-        # 3. Fallback check using explicit format structural matching loops
         standard_formats = (
             "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", 
             "%m/%d/%Y %I:%M %p", "%m/%d/%Y", "%d/%m/%Y"
@@ -47,7 +47,6 @@ def parse_and_normalize_date(date_str: str) -> tuple[bool, str]:
             except ValueError:
                 continue
         
-        # 4. Graceful handling: Provide instructions back to the agent instead of throwing an error
         return False, (
             f"Invalid date/time context value: '{date_str}'. "
             "Please explicitly ask the user to clarify or re-state their preferred "
@@ -55,7 +54,6 @@ def parse_and_normalize_date(date_str: str) -> tuple[bool, str]:
         )
 
 
-# --- PYDANTIC SCHEMAS ---
 class TourBookingInput(BaseModel):
     property_id: str = Field(..., description="The ID, name, number, or title of the property the user selected (e.g., P-1001, Garden Studio 1001, or 1).")
     full_name: str = Field(..., description="The user's first and last name.")
@@ -83,75 +81,71 @@ class OperationStatusResponse(BaseModel):
     message: str
 
 
-# --- CORE DB UTILITY FUNCTIONS ---
-
 def confirm_tour_booking(details: TourBookingInput) -> BookingConfirmation:
     """Inserts a completed tour row into Supabase with robust ID resolution and date validation layers."""
     details_dict = details if isinstance(details, dict) else details.model_dump()
     raw_property_identifier = str(details_dict.get("property_id")).strip()
     raw_date_string = details_dict.get("preferred_date")
     
-    log.info(f"[ID RESOLUTION] Received property identifier from LLM: '{raw_property_identifier}'")
+    log.info("Booking request received property_identifier=%s", raw_property_identifier)
     
-    # NEW STEP: Validate and Normalize Date String
     date_success, normalized_date_result = parse_and_normalize_date(raw_date_string)
     if not date_success:
-        log.warning(f"[DATE VALIDATION FAILED] Returning recovery feedback to Agent loop for raw input: '{raw_date_string}'")
+        log.warning("Booking date validation failed input=%s", raw_date_string)
         return BookingConfirmation(
             booking_id="NONE",
             status="FAILED",
-            message=normalized_date_result  # The Agent will read this and prompt the user for clarification
+            message=normalized_date_result
         )
     
-    log.info(f"[DATE VALIDATION SUCCESS] Normalized '{raw_date_string}' -> '{normalized_date_result}'")
+    log.info("Booking date normalized raw=%s normalized=%s", raw_date_string, normalized_date_result)
     resolved_id = None
 
-    # Step 1: Check if it's already a perfect match for an existing Primary Key
     exact_check = supabase.table("properties").select("id").eq("id", raw_property_identifier).execute()
     if exact_check.data:
         resolved_id = exact_check.data[0]["id"]
-        log.info(f"[ID RESOLUTION] Direct Primary Key match found: {resolved_id}")
+        log.info("Property id matched directly id=%s", resolved_id)
     
-    # Step 2: Fallback to a Name/Title text match search if direct match failed
     if not resolved_id:
-        log.info(f"[ID RESOLUTION] Direct lookup failed. Performing text similarity search on database fields...")
+        log.info("Direct property id lookup failed, attempting name-based fallback")
         clean_search = raw_property_identifier.replace("W-", "").replace("P-", "")
         
         name_check = supabase.table("properties").select("id").ilike("name", f"%{clean_search}%").execute()
         if name_check.data:
             resolved_id = name_check.data[0]["id"]
-            log.info(f"[ID RESOLUTION] Successfully mapped '{raw_property_identifier}' to DB Primary Key: {resolved_id}")
+            log.info("Name-based property mapping succeeded original=%s resolved_id=%s", raw_property_identifier, resolved_id)
         else:
-            # Step 3: Ultimate Fallback (Grab top catalog item as fallback)
-            log.warning(f"[ID RESOLUTION] No match found for '{raw_property_identifier}'. Defaulting to top catalog listing as safety fallback.")
+            log.warning("Property mapping fallback triggered for identifier=%s", raw_property_identifier)
             fallback_check = supabase.table("properties").select("id").limit(1).execute()
             if fallback_check.data:
                 resolved_id = fallback_check.data[0]["id"]
 
     if not resolved_id:
-        log.error("[SUPABASE DB] Aborting operation. Target properties catalog table is entirely empty.")
+        log.error("Booking aborted because properties catalog is empty")
         return BookingConfirmation(booking_id="NONE", status="FAILED", message="No properties found in the system catalog to map against.")
 
-    # Step 4: Proceed with writing the payload using the guaranteed valid foreign key and normalized date
     payload = {
         "property_id": resolved_id,
         "full_name": details_dict.get("full_name"),
         "email": details_dict.get("email"),
         "phone_number": details_dict.get("phone_number"),
-        "preferred_date": normalized_date_result  # Safe timestamp format
+        "preferred_date": normalized_date_result
     }
+
+    log.debug("Persisting booking payload property_id=%s email=%s", resolved_id, details_dict.get("email"))
     
     response = supabase.table("tour_bookings").insert(payload).execute()
     
     if response.data:
         generated_id = response.data[0]["id"]
-        log.info(f"[SUPABASE DB] Write Successful! Record Row UUID Committed: {generated_id}")
+        log.info("Booking created booking_id=%s property_id=%s", generated_id, resolved_id)
         return BookingConfirmation(
             booking_id=str(generated_id),
             status="SUCCESS",
             message=f"Tour successfully booked. ID: {generated_id}"
         )
     
+    log.error("Booking insert failed for property_id=%s email=%s", resolved_id, details_dict.get("email"))
     return BookingConfirmation(booking_id="NONE", status="FAILED", message="Database write transaction failed.")
 
 
@@ -160,12 +154,14 @@ def list_customer_bookings_api(filters: CustomerEmailInput) -> list:
     filter_dict = filters if isinstance(filters, dict) else filters.model_dump()
     customer_email = filter_dict.get("email")
     
-    log.info(f"[SUPABASE DB] Querying all bookings for email: '{customer_email}'")
+    log.info("Listing bookings for email=%s", customer_email)
     
     response = supabase.table("tour_bookings")\
         .select("id, preferred_date, properties(name)")\
         .eq("email", customer_email)\
         .execute()
+
+    log.info("Found %d bookings for email=%s", len(response.data), customer_email)
         
     return response.data
 
@@ -175,7 +171,7 @@ def cancel_tour_booking_api(details: CancelBookingInput) -> OperationStatusRespo
     details_dict = details if isinstance(details, dict) else details.model_dump()
     target_id = details_dict.get("booking_id")
     
-    log.info(f"[SUPABASE DB] Attempting soft delete / cancellation for Booking UUID: {target_id}")
+    log.info("Cancelling booking booking_id=%s", target_id)
     
     response = supabase.table("tour_bookings")\
         .update({"status": "cancelled", "updated_at": "now()"})\
@@ -183,13 +179,13 @@ def cancel_tour_booking_api(details: CancelBookingInput) -> OperationStatusRespo
         .execute()
         
     if response.data:
-        log.info(f"[SUPABASE DB] Cancellation successful for ID: {target_id}")
+        log.info("Cancellation successful booking_id=%s", target_id)
         return OperationStatusResponse(
             status="SUCCESS",
             message=f"Your tour booking (ID: {target_id}) has been successfully cancelled."
         )
         
-    log.error(f"[SUPABASE DB] Cancellation failed. Booking ID {target_id} not found.")
+    log.error("Cancellation failed booking_id=%s", target_id)
     return OperationStatusResponse(status="FAILED", message="Booking ID not found or update failed.")
 
 
@@ -199,12 +195,11 @@ def reschedule_tour_booking_api(details: RescheduleBookingInput) -> OperationSta
     target_id = details_dict.get("booking_id")
     raw_new_date = details_dict.get("new_date")
     
-    log.info(f"[SUPABASE DB] Attempting reschedule update for Booking UUID: {target_id} to New Date input: '{raw_new_date}'")
+    log.info("Reschedule requested booking_id=%s requested_date=%s", target_id, raw_new_date)
     
-    # NEW STEP: Validate and Normalize Reschedule Date String
     date_success, normalized_date_result = parse_and_normalize_date(raw_new_date)
     if not date_success:
-        log.warning(f"[RESCHEDULE DATE VALIDATION FAILED] Returning recovery feedback to Agent loop.")
+        log.warning("Reschedule date validation failed booking_id=%s input=%s", target_id, raw_new_date)
         return OperationStatusResponse(
             status="FAILED",
             message=normalized_date_result
@@ -222,11 +217,11 @@ def reschedule_tour_booking_api(details: RescheduleBookingInput) -> OperationSta
         .execute()
         
     if response.data:
-        log.info(f"[SUPABASE DB] Reschedule database update verified for ID: {target_id}")
+        log.info("Reschedule successful booking_id=%s new_date=%s", target_id, normalized_date_result)
         return OperationStatusResponse(
             status="SUCCESS",
             message=f"Your tour has been successfully rescheduled to {normalized_date_result}."
         )
         
-    log.error(f"[SUPABASE DB] Rescheduling transaction failed for ID: {target_id}")
+    log.error("Reschedule failed booking_id=%s", target_id)
     return OperationStatusResponse(status="FAILED", message="Booking ID not found or modification failed.")
