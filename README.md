@@ -31,6 +31,12 @@ It supports:
 
 ## Architecture Overview
 
+- The client sends chat requests to the FastAPI server.
+- The server creates a fresh workflow for each request.
+- Workflow state is saved in checkpoint storage so conversations can resume safely.
+- The workflow can route to the property finder, tour scheduler, or customer portal agents.
+- Those agents call Supabase-backed tools to search properties or manage bookings.
+
 ```mermaid
 flowchart LR
   Client["Client App"] --> API["FastAPI server.py"]
@@ -50,6 +56,12 @@ flowchart LR
 
 ## Workflow Routing
 
+- The property finder is the main entry point for most conversations.
+- If the user wants to search properties, the same agent keeps handling the request.
+- If the user wants to book a tour, control moves to the tour scheduler agent.
+- If the user wants to view, cancel, or change bookings, control moves to the customer portal agent.
+- After a booking or management task is done, the flow returns to the property finder.
+
 ```mermaid
 flowchart TD
   U["User Message"] --> PF["PropertyFinderAgent"]
@@ -61,6 +73,12 @@ flowchart TD
 ```
 
 ## Request Lifecycle
+
+- The client sends a message with a session id.
+- The API loads the saved checkpoint and any pending request state.
+- The server builds a fresh workflow agent and runs the request.
+- The workflow reads and writes checkpoints while it processes the message.
+- The API stores the updated checkpoint data and returns the assistant response.
 
 ```mermaid
 sequenceDiagram
