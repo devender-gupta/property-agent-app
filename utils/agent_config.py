@@ -12,6 +12,7 @@ from tools.scheduling_tools import (
     list_customer_bookings_api,
     reschedule_tour_booking_api,
 )
+from utils.middleware import PastDateGuardMiddleware
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 
@@ -67,4 +68,5 @@ def build_agent_from_config(config_name: str, client: OpenAIChatClient) -> Agent
         tools=tools,
         require_per_service_call_history_persistence=True,
         instructions=config["system_prompt"],
+        middleware=[PastDateGuardMiddleware()],
     )

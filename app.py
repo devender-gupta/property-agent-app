@@ -9,9 +9,17 @@ from agent_framework.openai import OpenAIChatClient
 from agent_framework.orchestrations import HandoffBuilder
 from agent_framework.devui import serve
 from agent_framework import FileCheckpointStorage
+from agent_framework.observability import configure_otel_providers, enable_instrumentation
 
 from utils.agent_config import build_agent_from_config
 from utils.logger import log
+
+# Opt-in: emits spans for chat client calls, handoff transitions, and tool
+# invocations to the console. Off by default so normal dev runs stay quiet.
+if os.environ.get("ENABLE_OBSERVABILITY", "false").lower() == "true":
+    configure_otel_providers(enable_console_exporters=True)
+    enable_instrumentation()
+    log.info("Observability instrumentation enabled")
 
 log.info("Initializing chat client and specialist agents")
 
