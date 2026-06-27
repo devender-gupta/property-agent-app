@@ -33,17 +33,17 @@ It supports:
 
 ```mermaid
 flowchart LR
-  Client[Client App] --> API[/FastAPI server.py/]
-  API --> WF[build_workflow_agent() per request]
-  WF --> CP[(FileCheckpointStorage)]
-  API --> META[(session_state.db)]
-  WF --> PF[PropertyFinderAgent]
-  WF --> TS[TourSchedulerAgent]
-  WF --> CPAG[CustomerPortalAgent]
-  PF --> PT[search_properties_api]
-  TS --> ST[confirm_tour_booking]
-  CPAG --> ST2[list/cancel/reschedule tools]
-  PT --> SB[(Supabase)]
+  Client["Client App"] --> API["FastAPI server.py"]
+  API --> WF["Fresh workflow per request"]
+  WF --> CP["FileCheckpointStorage"]
+  API --> META["session_state.db"]
+  WF --> PF["PropertyFinderAgent"]
+  WF --> TS["TourSchedulerAgent"]
+  WF --> CPAG["CustomerPortalAgent"]
+  PF --> PT["search_properties_api"]
+  TS --> ST["confirm_tour_booking"]
+  CPAG --> ST2["list/cancel/reschedule tools"]
+  PT --> SB["Supabase"]
   ST --> SB
   ST2 --> SB
 ```
@@ -52,10 +52,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  U[User Message] --> PF[PropertyFinderAgent]
+  U["User Message"] --> PF["PropertyFinderAgent"]
   PF -->|property search| PF
-  PF -->|book or schedule tour| TS[TourSchedulerAgent]
-  PF -->|manage existing bookings| CP[CustomerPortalAgent]
+  PF -->|book or schedule tour| TS["TourSchedulerAgent"]
+  PF -->|manage existing bookings| CP["CustomerPortalAgent"]
   TS -->|booking complete| PF
   CP -->|actions complete| PF
 ```
@@ -66,7 +66,7 @@ flowchart TD
 sequenceDiagram
   participant C as Client
   participant S as FastAPI /v1/chat
-  participant W as WorkflowAgent (new per request)
+  participant W as Fresh workflow
   participant CK as FileCheckpointStorage
   participant DB as session_state.db
 
